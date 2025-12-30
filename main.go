@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Request struct {
@@ -59,11 +60,16 @@ func worker(id int, jobs chan net.Conn, root *string) {
 
 		fmt.Printf("Worker %d processing connection\n", id)
 
-		// No 'go' keyword here!
-		// We want THIS worker to be busy doing this task.
-		handleConnection(conn, root)
+		startTime := time.Now()
 
-		fmt.Printf("Worker %d finished. Ready for next.\n", id)
+		status, err := handleConnection(conn, root)
+		if err != nil {
+			fmt.Printf("error in handleConnection: %s", err)
+		}
+		duration := time.Since(startTime)
+
+		fmt.Printf("[Worker %d] %d | %s | %v\n", id, status, conn.RemoteAddr(), duration)
+
 	}
 
 }
@@ -78,6 +84,7 @@ func writeResponse(c net.Conn, response Response) (Response, error) {
 		header := fmt.Sprintf("%s: %s\r\n", k, v)
 		buf.Write([]byte(header))
 	}
+	buf.Write([]byte("\r\n")) // there shoud be two `\r\n` after the last header and body
 
 	buf.Write(response.body)
 	parsedResponse := buf.Bytes()
@@ -104,13 +111,13 @@ func parseRequestLine(s string) (Request, error) {
 	return request_data, nil
 }
 
-func handleConnection(c net.Conn, root *string) {
+func handleConnection(c net.Conn, root *string) (int, error) {
 	defer c.Close()
 	buff := make([]byte, 1024)
 	n, err := c.Read(buff)
 	if err != nil {
 		fmt.Println("error in reading")
-		return
+		return 0, err
 	}
 
 	header := string(buff[:n])
@@ -119,7 +126,7 @@ func handleConnection(c net.Conn, root *string) {
 	requestData, err := parseRequestLine(firstLine)
 	if err != nil {
 		fmt.Println("error in parseRequestLine fucntion")
-		return
+		return 0, err
 	}
 
 	cleanedPath := filepath.Clean(requestData.path)
@@ -140,7 +147,7 @@ func handleConnection(c net.Conn, root *string) {
 		htmlData, err := os.ReadFile(notFoundPath)
 		if err != nil {
 			fmt.Println("failed to read the 404.html file")
-			return
+			return 0, err
 		}
 		response := Response{
 			statusCode: 404,
@@ -148,8 +155,12 @@ func handleConnection(c net.Conn, root *string) {
 			headers:    map[string]string{"Content-Type": "text/html"},
 			body:       htmlData,
 		}
-		writeResponse(c, response)
-		return
+		res, err := writeResponse(c, response)
+		if err != nil {
+			fmt.Printf("error in writeResponse function: %s", err)
+			return 0, err
+		}
+		return res.statusCode, nil
 	}
 
 	fullFileName := strings.Split(filePath, ".")
@@ -173,5 +184,10 @@ func handleConnection(c net.Conn, root *string) {
 		headers:    map[string]string{"Content-Type": contentType, "X-Some": "i will die for you"},
 		body:       htmlData,
 	}
-	writeResponse(c, response)
+	res, err := writeResponse(c, response)
+	if err != nil {
+		fmt.Printf("error in writeResponse function: %s", err)
+		return 0, err
+	}
+	return res.statusCode, nil
 }
