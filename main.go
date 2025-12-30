@@ -12,9 +12,16 @@ import (
 )
 
 type Request struct {
-	method   string
-	path     string
-	protocol string
+	method      string
+	path        string
+	httpVersion string
+	headers     *map[string]string
+}
+type Response struct {
+	statusCode int
+	status     string
+	headers    map[string]string
+	body       []byte
 }
 
 func main() {
@@ -61,16 +68,25 @@ func worker(id int, jobs chan net.Conn, root *string) {
 
 }
 
-func writeResponse(c net.Conn, body []byte, status_code string, contentType string) {
-	responseLine := []byte(fmt.Sprintf("HTTP/1.1 %s\r\n", status_code))
-	contentTypeHeader := []byte(fmt.Sprintf("Content-Type: %s\r\n\r\n", contentType))
+func writeResponse(c net.Conn, response Response) (Response, error) {
+	responseLine := []byte(fmt.Sprintf("HTTP/1.1 %s \r\n", response.status))
 	var buf bytes.Buffer
 	buf.Write(responseLine)
-	buf.Write(contentTypeHeader)
-	buf.Write(body)
-	response := buf.Bytes()
 
-	c.Write(response)
+	// adding the headers one-by-one
+	for k, v := range response.headers {
+		header := fmt.Sprintf("%s: %s\r\n", k, v)
+		buf.Write([]byte(header))
+	}
+
+	buf.Write(response.body)
+	parsedResponse := buf.Bytes()
+
+	_, err := c.Write(parsedResponse)
+	if err != nil {
+		return Response{}, err
+	}
+	return response, nil
 }
 
 func parseRequestLine(s string) (Request, error) {
@@ -81,9 +97,9 @@ func parseRequestLine(s string) (Request, error) {
 		return Request{}, fmt.Errorf("malformed request: %s ", s)
 	}
 	request_data := Request{
-		method:   parsed_string[0],
-		path:     parsed_string[1],
-		protocol: parsed_string[2],
+		method:      parsed_string[0],
+		path:        parsed_string[1],
+		httpVersion: parsed_string[2],
 	}
 	return request_data, nil
 }
@@ -108,8 +124,6 @@ func handleConnection(c net.Conn, root *string) {
 
 	cleanedPath := filepath.Clean(requestData.path)
 
-	// 2. Remove the leading "/" to make it relative to your project folder
-	// "/secret.pem" becomes "secret.pem"
 	fileName := strings.TrimPrefix(cleanedPath, "/")
 
 	if fileName == "" {
@@ -120,6 +134,24 @@ func handleConnection(c net.Conn, root *string) {
 
 	fmt.Printf("Requested: %s -> Serving: %s\n", requestData.path, filePath)
 	htmlData, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Printf("failed to read the %s file", filePath)
+		notFoundPath := filepath.Join(*root, "404.html")
+		htmlData, err := os.ReadFile(notFoundPath)
+		if err != nil {
+			fmt.Println("failed to read the 404.html file")
+			return
+		}
+		response := Response{
+			statusCode: 404,
+			status:     "404 Not Found",
+			headers:    map[string]string{"Content-Type": "text/html"},
+			body:       htmlData,
+		}
+		writeResponse(c, response)
+		return
+	}
+
 	fullFileName := strings.Split(filePath, ".")
 	fileExtension := fullFileName[len(fullFileName)-1]
 	var contentType string
@@ -135,15 +167,11 @@ func handleConnection(c net.Conn, root *string) {
 
 	}
 
-	if err != nil {
-		fmt.Printf("failed to read the %s file", filePath)
-		htmlData, err := os.ReadFile("./404.html")
-		if err != nil {
-			fmt.Println("failed to read the 404.html file")
-			return
-		}
-		writeResponse(c, htmlData, "404 Not Found", "text/html")
-		return
+	response := Response{
+		statusCode: 200,
+		status:     "200 OK",
+		headers:    map[string]string{"Content-Type": contentType, "X-Some": "i will die for you"},
+		body:       htmlData,
 	}
-	writeResponse(c, htmlData, "200 OK", contentType)
+	writeResponse(c, response)
 }
