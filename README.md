@@ -25,15 +25,19 @@ This project is a deep dive into the **Fundamental Mechanics** of the internet. 
 - [x] **Robust Error Handling:** Custom 404 pages and safe error recovery.
 - [x] **Security:** Implements `filepath.Clean` logic to prevent Path Traversal attacks.
 - [x] **High Performance Concurrency:** Uses a **Worker Pool** pattern to limit active goroutines and prevent resource exhaustion under load.
+- [x] **CLI Configuration:** Add flags to configure Port and Root Directory via command line (e.g., `--port=9000`).
+- [x] **Structured Logging:** Implement a middleware-style logger to track request timing and status codes.
+- [x] **Code Refactor:** Separate concerns into distinct packages (`server`, `http`, `config`).
 
 ## 🚀 Roadmap
 
 The following features are planned for the next iteration:
 
-- [ ] **CLI Configuration:** Add flags to configure Port and Root Directory via command line (e.g., `--port=9000`).
-- [ ] **Structured Logging:** Implement a middleware-style logger to track request timing and status codes.
-- [ ] **Code Refactor:** Separate concerns into distinct packages (`server`, `http`, `config`).
 - [ ] **Keep-Alive:** Support persistent TCP connections for better performance.
+- [ ] Rate limiting: a rate limiter middleware
+- [ ] straming large files: open the file but don't read it all at once into the memory
+- [ ] incoming headers: parse incoming headers
+- [ ] directory listing: list the directory if the index.html file isn't found
 
 ## 🛠️ Usage
 
